@@ -49,7 +49,16 @@
 from ctypes import *
 from ctypes.wintypes import *
 import psutil
+
 from struct import *
+
+unpack_dict = {
+    type(c_int64()):"Q",          # 8 bytes
+    type(c_int32()):"i",          # 4 bytes
+    type(c_float()):"f",          # 4 bytes
+    type(c_double()):"d",         # 8 bytes
+    type(int()):"Q"
+}
 
 
 k32 = windll.kernel32
@@ -82,25 +91,69 @@ class ModuleInformation:
         self.address = address
 
 class Process:
-    def __init__(self, pid):
+    def __init__(self, pid, name):
         self.pid = pid
         self.handle = openProc(PROCESS_ALL_ACCESS, False, self.pid)
         self.mods = getModules(self.handle)
+        self.name = name
+        self.address = None
+        for mod in self.mods:
+            if mod.name == self.name:
+                self.address = mod.address
+        if self.address == None:
+            print("PROCESS ADDRESS NOT FOUND")
+        else:
+            print(f"Process {self.name} found at {self.address}")
 
-    def readP(address, size, *datatype): # size bytes
+    def readP(self, address, size, datatype=None): # size bytes
         data = None
         buffer = create_string_buffer(size)
-        counter = c_uint()
-        a = readProcMem(self.handle, address, buffer, size, 0) #[HANDLE, LPCVOID, LPVOID, c_size_t, POINTER(c_size_t)]
+        counter = c_ulonglong()
+        a = readProcMem(self.handle, address, buffer, size, byref(counter)) #[HANDLE, LPCVOID, LPVOID, c_size_t, POINTER(c_size_t)]
         if a == 0:
-            print(GetLastError())
+            print(f"ERROR: {GetLastError()}\n{FormatError(GetLastError())}")
         else:
-            print(f"bytes read: {counter.value} | data: {buffer.raw}")#debug
-            print("read memory complete") # debug
+            #print(f"bytes read: {counter.value} | data: {buffer.raw}")#debug
+            #print("read memory complete") # debug
 
-            raw = buffer.raw
-            data = raw
+            if type(datatype) != None:
+                data = unpack("<"+unpack_dict[type(datatype)], buffer.raw)[0]
+                print(f"data interpreted as {type(datatype)}: {data}")
+
+
+                # if type(datatype) == type(int()):
+                #     data = unpack("<Q",buffer.raw)[0]
+                #     print(f"data interpreted as {type(datatype)}: {data}")
+            else:
+                raw = buffer.raw
+                data = raw
             return data
+
+    #[0x038D3BE0, 0x8, 0x2A6D14C]
+    def readDeepP(self, deepPointer, size, datatype=None):
+        pt = None
+        for address in deepPointer:
+            pt = self.readP(address, 8, datatype=int())
+        data = self.readP(pt, size, datatype=datatype)
+        return data
+
+    def listModules(self, key=None):
+        for mod in self.mods:
+            if key == None:
+                print(f"Index: {mod.index} | Name: {mod.name} | Address: {mod.address}")
+            else:
+                if mod.name == key:
+                    print(f"Index: {mod.index} | Name: {mod.name} | Address: {mod.address}")
+
+
+# class DeepPointer:
+
+#     def __init__(self, handle, *args):
+#         for arg in args:
+        
+
+#     def readPointer()
+
 
 
 def getPIDs(nameProcess):
@@ -170,17 +223,6 @@ def printModules(pid, proc):
     for mod in mods:
         print(f"Index: {mod.index}\nModule: {mod.name}\nVirtual Address: {mod.address}")
 
-
-
-def readP_celevel(mod):
-
-    dlllistOS = 0x038D3BE0 # address of dll list relative to process address
-# h1OS = 0x8
-# h1levelnameOS = 0x2A6D14C
-    proc = getProc(getPIDs(nameProcess)[0])
-    counter = c_uint()
-    ret = readP(proc, dlllistOS, 16)
-
 def dbg():
     nameProcess = "MCC-Win64-Shipping.exe"
     PIDs = getPIDs(nameProcess)
@@ -189,11 +231,18 @@ def dbg():
     else:
         print(f"{len(PIDs)} Processes found, acting on first...")
         print(PIDs)
-        proc = Process(PIDs[0])
-        # printModules(PIDs[0])
-        for mod in proc.mods:
-            if mod.name == "halo1.dll":
-                resp = proc.readP(mod.address, 16)
+        proc = Process(PIDs[0], nameProcess)
+        # l1_pointer = proc.readP(proc.address+0x038D3BE0, 8, datatype=int())
+        # l2_pointer = proc.readP(l1_pointer+0x8, 8, datatype=int())
+        # proc.listModules(key="halo1.dll")
+        # print(f"level 1 pointer: {l1_pointer}")
+        # for mod in proc.mods:
+        #     if mod.name == "halo1.dll":
+        #         resp = proc.readP(mod.address+0x2A6D14C, 3)
+        #         print(resp)
+        
+        levelName = proc.readDeepP([0x038D3BE0, 0x8, 0x2A6D14C], 3)
+        print(levelName)
     
 
 dbg()
