@@ -109,32 +109,29 @@ class Process:
         data = None
         buffer = create_string_buffer(size)
         counter = c_ulonglong()
-        a = readProcMem(self.handle, address, buffer, size, byref(counter)) #[HANDLE, LPCVOID, LPVOID, c_size_t, POINTER(c_size_t)]
+        a = readProcMem(self.handle, address, buffer, size, byref(counter))
         if a == 0:
             print(f"ERROR: {GetLastError()}\n{FormatError(GetLastError())}")
         else:
-            #print(f"bytes read: {counter.value} | data: {buffer.raw}")#debug
-            #print("read memory complete") # debug
+            if datatype != None:
+                # data = unpack("<"+unpack_dict[type(datatype)], buffer.raw)[0]
+                # print(f"data interpreted as {type(datatype)}: {data}")
 
-            if type(datatype) != None:
-                data = unpack("<"+unpack_dict[type(datatype)], buffer.raw)[0]
-                print(f"data interpreted as {type(datatype)}: {data}")
-
-
-                # if type(datatype) == type(int()):
-                #     data = unpack("<Q",buffer.raw)[0]
-                #     print(f"data interpreted as {type(datatype)}: {data}")
+                if type(datatype) == type(int()):
+                    data = unpack("<Q",buffer.raw)[0]
+                    #print(f"data interpreted as {type(datatype)}: {data}")
             else:
                 raw = buffer.raw
                 data = raw
+                #print(f"raw output: {data}")
             return data
 
     #[0x038D3BE0, 0x8, 0x2A6D14C]
-    def readDeepP(self, deepPointer, size, datatype=None):
-        pt = None
-        for address in deepPointer:
-            pt = self.readP(address, 8, datatype=int())
-        data = self.readP(pt, size, datatype=datatype)
+    def readDeepP(self, deepPointer, size):
+        pt = self.readP(self.address+deepPointer[0], 8, datatype=int())
+        for offset in deepPointer[1:-1]:
+            pt = self.readP(pt+offset, 8, datatype=int())
+        data = self.readP(pt+deepPointer[-1], size)
         return data
 
     def listModules(self, key=None):
@@ -146,15 +143,11 @@ class Process:
                     print(f"Index: {mod.index} | Name: {mod.name} | Address: {mod.address}")
 
 
-# class DeepPointer:
+    ### Testy Stuff ###
 
-#     def __init__(self, handle, *args):
-#         for arg in args:
-        
-
-#     def readPointer()
-
-
+    def printLevel(self):
+        levelBytes = self.readDeepP([0x038D3BE0, 0x8, 0x2A6D14C], 3)
+        print(f"Current level: {levelBytes.decode('utf-8')}")
 
 def getPIDs(nameProcess):
     found = []
@@ -223,26 +216,37 @@ def printModules(pid, proc):
     for mod in mods:
         print(f"Index: {mod.index}\nModule: {mod.name}\nVirtual Address: {mod.address}")
 
-def dbg():
+def start_here():
     nameProcess = "MCC-Win64-Shipping.exe"
     PIDs = getPIDs(nameProcess)
     if type(PIDs) == type(None):
         print(f"Process {nameProcess} not found")
     else:
-        print(f"{len(PIDs)} Processes found, acting on first...")
+        print(f"{len(PIDs)} Processes found, acting on first PID - {PIDs[0]}")
         print(PIDs)
         proc = Process(PIDs[0], nameProcess)
-        # l1_pointer = proc.readP(proc.address+0x038D3BE0, 8, datatype=int())
-        # l2_pointer = proc.readP(l1_pointer+0x8, 8, datatype=int())
-        # proc.listModules(key="halo1.dll")
-        # print(f"level 1 pointer: {l1_pointer}")
-        # for mod in proc.mods:
-        #     if mod.name == "halo1.dll":
-        #         resp = proc.readP(mod.address+0x2A6D14C, 3)
-        #         print(resp)
-        
-        levelName = proc.readDeepP([0x038D3BE0, 0x8, 0x2A6D14C], 3)
-        print(levelName)
-    
 
-dbg()
+        # Test individual levels of deep pointer method, uses int(), must fix
+        l1_pointer = proc.readP(proc.address+0x038D3BE0, 8, datatype=int())
+        l2_pointer = proc.readP(l1_pointer+0x8, 8, datatype=int())
+
+        # Test getting address relative to halo1.dll via module address
+        proc.listModules(key="halo1.dll")
+
+
+        for mod in proc.mods:
+            if mod.name == "halo1.dll":
+                resp = proc.readP(mod.address+0x2A6D14C, 3)
+                #print(resp)
+        
+        # Test levelname string via Class method method
+        levelBytes = proc.readDeepP([0x038D3BE0, 0x8, 0x2A6D14C], 3)
+        print(f"Current level: {levelBytes.decode('utf-8')}")
+        #print(len(levelBytes), type(levelBytes))
+        #levelName = str(''.join([unpack("<c", i) for i in levelBytes]))
+        # for i in levelBytes:
+        #     print(i)
+        # print(levelName)
+    
+        return proc
+a = start_here()
