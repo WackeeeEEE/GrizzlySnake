@@ -53,6 +53,9 @@ from struct import *
 
 
 k32 = windll.kernel32
+openProc = k32.OpenProcess
+openProc.argtypes = [DWORD, BOOL, DWORD] 
+openProc.restype = HANDLE
 readProcMem = k32.ReadProcessMemory
 readProcMem.argtypes = [HANDLE, LPCVOID, LPVOID, c_size_t, POINTER(c_size_t)]
 readProcMem.restype = BOOL
@@ -98,7 +101,7 @@ def getPIDs(nameProcess):
 def getProc(pid):
 
     # Get a handle to the process
-    proc = k32.OpenProcess( (PROCESS_VM_READ | PROCESS_QUERY_INFORMATION) , 0, pid)
+    proc = openProc( (PROCESS_VM_READ | PROCESS_QUERY_INFORMATION) , 0, pid)
     print(f"PROC", proc)
     return proc
 
