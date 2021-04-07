@@ -54,7 +54,7 @@ from struct import *
 
 k32 = windll.kernel32
 openProc = k32.OpenProcess
-openProc.argtypes = [DWORD, BOOL, DWORD] 
+openProc.argtypes = DWORD, BOOL, DWORD
 openProc.restype = HANDLE
 readProcMem = k32.ReadProcessMemory
 readProcMem.argtypes = [HANDLE, LPCVOID, LPVOID, c_size_t, POINTER(c_size_t)]
@@ -72,10 +72,6 @@ PROCESS_VM_READ = 0x0010 # READ-ONLY
 PROCESS_ALL_ACCESS = 0x1F0FFF # MORE_ACCESS
 PROCESS_QUERY_INFORMATION = 0x0400
 
-# FORMAT_MESSAGE_ALLOCATE_BUFFER = 0x00000100
-# FORMAT_MESSAGE_FROM_SYSTEM = 0x00001000
-# FORMAT_MESSAGE_IGNORE_INSERTS = 0x00000200
-
 # Fun starts here
 
 class ModuleInformation:
@@ -84,6 +80,28 @@ class ModuleInformation:
         self.name = name
         self.path = path
         self.address = address
+
+class Process:
+    def __init__(self, pid):
+        self.pid = pid
+        self.handle = openProc(PROCESS_ALL_ACCESS, False, self.pid)
+        self.mods = getModules(self.handle)
+
+    def readP(address, size, *datatype): # size bytes
+        data = None
+        buffer = create_string_buffer(size)
+        counter = c_uint()
+        a = readProcMem(self.handle, address, buffer, size, 0) #[HANDLE, LPCVOID, LPVOID, c_size_t, POINTER(c_size_t)]
+        if a == 0:
+            print(GetLastError())
+        else:
+            print(f"bytes read: {counter.value} | data: {buffer.raw}")#debug
+            print("read memory complete") # debug
+
+            raw = buffer.raw
+            data = raw
+            return data
+
 
 def getPIDs(nameProcess):
     found = []
@@ -101,9 +119,11 @@ def getPIDs(nameProcess):
 def getProc(pid):
 
     # Get a handle to the process
-    proc = openProc( (PROCESS_VM_READ | PROCESS_QUERY_INFORMATION) , 0, pid)
-    print(f"PROC", proc)
-    return proc
+    proc = openProc( (PROCESS_VM_READ | PROCESS_QUERY_INFORMATION) , False, pid)
+    if proc == 0:
+        print(f"ERROR: {GetLastError()}\n{FormatError(GetLastError())}")
+    else:
+        return proc
 
 def getModules(proc):
 
@@ -117,9 +137,6 @@ def getModules(proc):
     modNameArray = c_char * MAX_PATH
     clearName = modNameArray()
     szModName = modNameArray()
-
-    # Print the process identifier
-    print(f"Process ID: {proc}")
 
     # Get a list of all the modules in this process
     EnumAttempt = psapi.EnumProcessModules(hProcess, hMods, sizeof(hMods), byref(cbNeeded))
@@ -144,32 +161,18 @@ def getModules(proc):
                 pass
         return mods
 
-def printModules(pid):
+def printModules(pid, proc):
 
     print(f"Modules of process {pid}:")
-
-    mods = getModules(pid)
+    proc = getProc(pid)
+    mods = getModules(proc)
 
     for mod in mods:
         print(f"Index: {mod.index}\nModule: {mod.name}\nVirtual Address: {mod.address}")
 
-def readP(proc, address, size, *datatype): # size bytes
-    data = None
-    buffer = create_string_buffer(size)
-    counter = c_uint()
-    a = readProcMem(proc, address, buffer, size, 0) #[HANDLE, LPCVOID, LPVOID, c_size_t, POINTER(c_size_t)]
-    if a == 0:
-        print(GetLastError())
-    else:
-        print(f"bytes read: {counter.value} | data: {buffer.raw}")#debug
-        print("read memory complete") # debug
 
-        raw = buffer.raw
-        # print(raw)
-        data = raw
-        return data
 
-def readP_celevel():
+def readP_celevel(mod):
 
     dlllistOS = 0x038D3BE0 # address of dll list relative to process address
 # h1OS = 0x8
@@ -185,9 +188,12 @@ def dbg():
         print(f"Process {nameProcess} not found")
     else:
         print(f"{len(PIDs)} Processes found, acting on first...")
-        proc = getProc(PIDs[0])
-        print(f"process object:", type(proc), proc)
-        mods = getModules(proc)
-    #readP_celevel()
+        print(PIDs)
+        proc = Process(PIDs[0])
+        # printModules(PIDs[0])
+        for mod in proc.mods:
+            if mod.name == "halo1.dll":
+                resp = proc.readP(mod.address, 16)
+    
 
 dbg()
