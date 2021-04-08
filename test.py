@@ -52,15 +52,6 @@ import psutil
 
 from struct import *
 
-unpack_dict = {
-    type(c_int64()):"Q",          # 8 bytes
-    type(c_int32()):"i",          # 4 bytes
-    type(c_float()):"f",          # 4 bytes
-    type(c_double()):"d",         # 8 bytes
-    type(int()):"Q"
-}
-
-
 k32 = windll.kernel32
 openProc = k32.OpenProcess
 openProc.argtypes = DWORD, BOOL, DWORD
@@ -105,7 +96,7 @@ class Process:
         else:
             print(f"Process {self.name} found at {self.address}")
 
-    def readP(self, address, size, datatype=None): # size bytes
+    def readP(self, address, size):#, datatype=None): # size bytes
         data = None
         buffer = create_string_buffer(size)
         counter = c_ulonglong()
@@ -113,24 +104,24 @@ class Process:
         if a == 0:
             print(f"ERROR: {GetLastError()}\n{FormatError(GetLastError())}")
         else:
-            if datatype != None:
-                # data = unpack("<"+unpack_dict[type(datatype)], buffer.raw)[0]
-                # print(f"data interpreted as {type(datatype)}: {data}")
+            # if datatype != None:
+            #     # data = unpack("<"+unpack_dict[type(datatype)], buffer.raw)[0]
+            #     # print(f"data interpreted as {type(datatype)}: {data}")
 
-                if type(datatype) == type(int()):
-                    data = unpack("<Q",buffer.raw)[0]
-                    #print(f"data interpreted as {type(datatype)}: {data}")
-            else:
-                raw = buffer.raw
-                data = raw
+            #     if type(datatype) == type(int()):
+            #         data = unpack("<Q",buffer.raw)[0]
+            #         #print(f"data interpreted as {type(datatype)}: {data}")
+            # else:
+                # = buffer.raw
+                #data = raw
                 #print(f"raw output: {data}")
-            return data
+            return Fragment(address, buffer.raw) #data
 
     #[0x038D3BE0, 0x8, 0x2A6D14C]
     def readDeepP(self, deepPointer, size):
-        pt = self.readP(self.address+deepPointer[0], 8, datatype=int())
+        pt = self.readP(self.address+deepPointer[0], 8).asPtr()
         for offset in deepPointer[1:-1]:
-            pt = self.readP(pt+offset, 8, datatype=int())
+            pt = self.readP(pt+offset, 8).asPtr()
         data = self.readP(pt+deepPointer[-1], size)
         return data
 
@@ -146,8 +137,25 @@ class Process:
     ### Testy Stuff ###
 
     def printLevel(self):
-        levelBytes = self.readDeepP([0x038D3BE0, 0x8, 0x2A6D14C], 3)
-        print(f"Current level: {levelBytes.decode('utf-8')}")
+        levelFragment = self.readDeepP([0x038D3BE0, 0x8, 0x2A6D14C], 3)
+        #print(f"Value at address {levelFragment.address}:\nRaw: {levelFragment.raw}\nString: {levelFragment.asStr()}")
+        print(f"Current level: {levelFragment.asStr()}")
+
+class Fragment:
+    def __init__(self, address, raw):
+        self.address = address
+        self.raw = raw
+        self.size = len(self.raw)
+        
+    def __doc__():
+        return "Arbitrarily sized block of process data"
+    def asInt(self):
+        return unpack("<Q",self.raw)[0]
+    def asStr(self):
+        return self.raw.decode('utf-8')
+    def asPtr(self):
+        return unpack("<Q", self.raw)[0]
+
 
 def getPIDs(nameProcess):
     found = []
@@ -227,8 +235,8 @@ def start_here():
         proc = Process(PIDs[0], nameProcess)
 
         # Test individual levels of deep pointer method, uses int(), must fix
-        l1_pointer = proc.readP(proc.address+0x038D3BE0, 8, datatype=int())
-        l2_pointer = proc.readP(l1_pointer+0x8, 8, datatype=int())
+        # l1_pointer = proc.readP(proc.address+0x038D3BE0, 8, datatype=int())
+        # l2_pointer = proc.readP(l1_pointer+0x8, 8, datatype=int())
 
         # Test getting address relative to halo1.dll via module address
         proc.listModules(key="halo1.dll")
@@ -237,11 +245,11 @@ def start_here():
         for mod in proc.mods:
             if mod.name == "halo1.dll":
                 resp = proc.readP(mod.address+0x2A6D14C, 3)
-                #print(resp)
+                print(mod.address+0x2A6D14C, resp.raw, resp.asStr())
         
         # Test levelname string via Class method method
-        levelBytes = proc.readDeepP([0x038D3BE0, 0x8, 0x2A6D14C], 3)
-        print(f"Current level: {levelBytes.decode('utf-8')}")
+        # levelBytes = proc.readDeepP([0x038D3BE0, 0x8, 0x2A6D14C], 3)
+        # print(f"Current level: {levelBytes.decode('utf-8')}")
         #print(len(levelBytes), type(levelBytes))
         #levelName = str(''.join([unpack("<c", i) for i in levelBytes]))
         # for i in levelBytes:
@@ -249,4 +257,7 @@ def start_here():
         # print(levelName)
     
         return proc
+
+    
 a = start_here()
+a.printLevel()
