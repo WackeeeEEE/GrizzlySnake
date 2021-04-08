@@ -52,6 +52,9 @@ import psutil
 
 from struct import *
 
+import json
+from types import SimpleNamespace
+
 k32 = windll.kernel32
 openProc = k32.OpenProcess
 openProc.argtypes = DWORD, BOOL, DWORD
@@ -67,6 +70,12 @@ psapi.GetModuleFileNameExA.restype = BOOL
 
 
 nameProcess = "MCC-Win64-Shipping.exe"
+pointers = json.load(open("pointers.json", "r"), object_hook=lambda d: SimpleNamespace(**d)) # might wanna change this, namespace stuff scary
+strToType = {
+    "string":str(),
+    "int":int(),
+    "float":float()
+}
 
 PROCESS_VM_READ = 0x0010 # READ-ONLY
 PROCESS_ALL_ACCESS = 0x1F0FFF # MORE_ACCESS
@@ -138,7 +147,6 @@ class Process:
 
     def printLevel(self):
         levelFragment = self.readDeepP([0x038D3BE0, 0x8, 0x2A6D14C], 3)
-        #print(f"Value at address {levelFragment.address}:\nRaw: {levelFragment.raw}\nString: {levelFragment.asStr()}")
         print(f"Current level: {levelFragment.asStr()}")
 
 class Fragment:
@@ -156,6 +164,11 @@ class Fragment:
     def asPtr(self):
         return unpack("<Q", self.raw)[0]
 
+class Pointer:
+    def __init__(self, offsets, length, type): # list/tuple in
+        self.offsets = list(offsets)
+        self.length = length
+        self.type = strToType[type]
 
 def getPIDs(nameProcess):
     found = []
@@ -229,34 +242,15 @@ def start_here():
     PIDs = getPIDs(nameProcess)
     if type(PIDs) == type(None):
         print(f"Process {nameProcess} not found")
+        proc = None
     else:
         print(f"{len(PIDs)} Processes found, acting on first PID - {PIDs[0]}")
         print(PIDs)
         proc = Process(PIDs[0], nameProcess)
 
-        # Test individual levels of deep pointer method, uses int(), must fix
-        # l1_pointer = proc.readP(proc.address+0x038D3BE0, 8, datatype=int())
-        # l2_pointer = proc.readP(l1_pointer+0x8, 8, datatype=int())
-
-        # Test getting address relative to halo1.dll via module address
-        proc.listModules(key="halo1.dll")
 
 
-        for mod in proc.mods:
-            if mod.name == "halo1.dll":
-                resp = proc.readP(mod.address+0x2A6D14C, 3)
-                print(mod.address+0x2A6D14C, resp.raw, resp.asStr())
-        
-        # Test levelname string via Class method method
-        # levelBytes = proc.readDeepP([0x038D3BE0, 0x8, 0x2A6D14C], 3)
-        # print(f"Current level: {levelBytes.decode('utf-8')}")
-        #print(len(levelBytes), type(levelBytes))
-        #levelName = str(''.join([unpack("<c", i) for i in levelBytes]))
-        # for i in levelBytes:
-        #     print(i)
-        # print(levelName)
-    
-        return proc
+    return proc
 
     
 a = start_here()

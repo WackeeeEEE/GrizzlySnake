@@ -1,0 +1,9 @@
+{
+    "halo1": {
+        "level":{
+            "offsets":["0x03A15F58", "0x8", "0x2AA7D58"],
+            "length":3,
+            "type":"string"
+        }
+    }
+}
