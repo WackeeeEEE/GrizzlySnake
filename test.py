@@ -55,6 +55,9 @@ from struct import *
 import json
 from types import SimpleNamespace
 
+import asyncio
+import time
+
 k32 = windll.kernel32
 openProc = k32.OpenProcess
 openProc.argtypes = DWORD, BOOL, DWORD
@@ -126,7 +129,6 @@ class Process:
                 #print(f"raw output: {data}")
             return Fragment(address, buffer.raw) #data
 
-    #[0x038D3BE0, 0x8, 0x2A6D14C]
     def readDeepP(self, deepPointer, size, datatype=None):
         pt = self.readP(self.address+deepPointer[0], 8).asPtr()
         for offset in deepPointer[1:-1]:
@@ -134,11 +136,14 @@ class Process:
         data = self.readP(pt+deepPointer[-1], size)
         if datatype != None: # might implement this on the next highest level, not sure yet - ex: data return will be as"Type"()
             if type(datatype) == type(int()):
-                # print(f"as type {type(datatype)}: {data.asInt()}")
+                print(f"as type {type(datatype)}: {data.asInt()}")
+                return data.asInt()
             if type(datatype) == type(str()):
-                # print(f"as type {type(datatype)}: {data.asStr()}")
+                print(f"as type {type(datatype)}: {data.asStr()}")
+                return data.asStr()
             if type(datatype) == type(float()):
-                # print(f"as type {type(datatype)}: {data.asFloat()}")
+                print(f"as type {type(datatype)}: {data.asFloat()}")
+                return data.asFloat()
             # if type(datatype) == type(ptr()): #eeeeeeeh, do i have to?
             #     print("as type {type(datatype)}: {data.asPtr()}")
         return data
@@ -156,9 +161,10 @@ class Process:
 
     def printLevel(self):
         level = pointers.halo1.level
-        levelPointer = Pointer(level.offsets, level.length, level.type)
+        #levelPointer = Pointer(level.offsets, level.length, level.type)# shorten
+        levelPointer = PointerShort(level)
         levelFragment = self.readDeepP(levelPointer.offsets, levelPointer.length, levelPointer.type)
-        print(f"Current level: {levelFragment.asStr()}")
+        # print(f"Current level: {levelFragment.asStr()}")
 
 class Fragment:
     def __init__(self, address, raw):
@@ -182,10 +188,37 @@ class Pointer:
 
         self.offsets = [] # converting string hex/int? to int
         for offset in offsets:
-            self.offsets.append(int(offset, 16)) # using 0 base to invoke guessing base, useful for different types in db?
+            self.offsets.append(int(offset, 0)) # using 0 base to invoke guessing base, useful for different types in db?
 
         self.length = length
         self.type = strToType[type]
+
+class PointerShort:
+    def __init__(self, pointerObj): # composite arg in
+
+        self.offsets = [] # converting string hex/int? to int
+        for offset in pointerObj.offsets:
+            self.offsets.append(int(offset, 0)) # using 0 base to invoke guessing base, useful for different types in db?
+
+        self.length = pointerObj.length
+        self.type = strToType[pointerObj.type]
+
+class Watcher:
+    def __init__(self, proc, pointer):
+        self.proc = proc
+        self.pointer = pointer
+        
+    async def watch(self):
+        while True:
+            asyncio.sleep(5)
+            print(self.proc.readDeepP(self.pointer.offsets, self.pointer.length, datatype=self.pointer.type))
+
+class Phone:
+    def __init__(self, string):
+        self.string = string
+    
+    def __repr__(self) -> str:
+        return self.string
 
 def getPIDs(nameProcess):
     found = []
@@ -264,11 +297,12 @@ def start_here():
         print(f"{len(PIDs)} Processes found, acting on first PID - {PIDs[0]}")
         print(PIDs)
         proc = Process(PIDs[0], nameProcess)
-
-
-
     return proc
 
     
 a = start_here()
-a.printLevel()
+#a.printLevel()
+level = pointers.halo1.level
+levelWatcher = Watcher(a, PointerShort(level))
+await levelWatcher.watch()
+hi = Phone("Hello there!")
