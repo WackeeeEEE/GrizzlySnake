@@ -210,10 +210,14 @@ class PointerShort:
 class Governor:
     def __init__(self):
         self.objects = []
+        self.timeframes = []
+        self.fpsWatcher = WatcherFPS()
+        
 
     def ready(self, obj):
         if time.time() >= obj.lastRun+obj.interval:
             obj.run()
+            self.timeframes.append(time.time())
 
     def addWatcher(self, obj):
         self.objects.append(obj)
@@ -222,11 +226,23 @@ class Governor:
         watcherStr = str('\n'.join([obj.name for obj in self.objects]))
         print(f"Current Watchers:{watcherStr}")
 
+    def fps(self):
+        counter = 0
+        if time.time() > self.fpsWatcher.lastRun + self.fpsWatcher.interval:
+            self.fpsWatcher.lastRun = time.time()
+            if len(self.timeframes) > 500:
+                for timeframe in reversed(self.timeframes):
+                    if time.time() < timeframe + 1:
+                        counter += 1
+                    
+                print(f"Reading game memory at {counter} frames per second")
+
     def loop(self):
         while True:
             #time.sleep(5)
             for obj in self.objects:
                 self.ready(obj)
+            self.fps()
 
 
 class Watcher:
@@ -236,7 +252,7 @@ class Watcher:
 
         self.name = name
         self.interval = interval
-        self.lastRun = 0
+        self.lastRun = time.time()
 
 
 
@@ -246,6 +262,11 @@ class Watcher:
 
     def run(self):
         print(self.proc.readDeepP(self.pointer.offsets, self.pointer.length, datatype=self.pointer.type))
+        self.lastRun = time.time()
+
+class WatcherFPS:
+    def __init__(self):
+        self.interval = 5
         self.lastRun = time.time()
 
 class Phone:
@@ -337,11 +358,11 @@ def start_here():
     
 MCC = start_here()
 g = Governor()
-level = pointers.halo1.level
-levelWatcher = Watcher(MCC, PointerShort(level), name="h1-level", interval=5)
+# level = pointers.halo1.level
+# levelWatcher = Watcher(MCC, PointerShort(level), name="h1-level", interval=5)
 
 tick = pointers.halo1.tick
-tickWatcher = Watcher(MCC, PointerShort(tick), name="tick", interval=.5)
-g.addWatcher(levelWatcher)
+tickWatcher = Watcher(MCC, PointerShort(tick), name="tick", interval=.005)
+# g.addWatcher(levelWatcher)
 g.addWatcher(tickWatcher)
 g.loop()
