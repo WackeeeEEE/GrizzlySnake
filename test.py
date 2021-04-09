@@ -127,11 +127,20 @@ class Process:
             return Fragment(address, buffer.raw) #data
 
     #[0x038D3BE0, 0x8, 0x2A6D14C]
-    def readDeepP(self, deepPointer, size):
+    def readDeepP(self, deepPointer, size, datatype=None):
         pt = self.readP(self.address+deepPointer[0], 8).asPtr()
         for offset in deepPointer[1:-1]:
             pt = self.readP(pt+offset, 8).asPtr()
         data = self.readP(pt+deepPointer[-1], size)
+        if datatype != None: # might implement this on the next highest level, not sure yet - ex: data return will be as"Type"()
+            if type(datatype) == type(int()):
+                # print(f"as type {type(datatype)}: {data.asInt()}")
+            if type(datatype) == type(str()):
+                # print(f"as type {type(datatype)}: {data.asStr()}")
+            if type(datatype) == type(float()):
+                # print(f"as type {type(datatype)}: {data.asFloat()}")
+            # if type(datatype) == type(ptr()): #eeeeeeeh, do i have to?
+            #     print("as type {type(datatype)}: {data.asPtr()}")
         return data
 
     def listModules(self, key=None):
@@ -146,7 +155,9 @@ class Process:
     ### Testy Stuff ###
 
     def printLevel(self):
-        levelFragment = self.readDeepP([0x038D3BE0, 0x8, 0x2A6D14C], 3)
+        level = pointers.halo1.level
+        levelPointer = Pointer(level.offsets, level.length, level.type)
+        levelFragment = self.readDeepP(levelPointer.offsets, levelPointer.length, levelPointer.type)
         print(f"Current level: {levelFragment.asStr()}")
 
 class Fragment:
@@ -158,15 +169,21 @@ class Fragment:
     def __doc__():
         return "Arbitrarily sized block of process data"
     def asInt(self):
-        return unpack("<Q",self.raw)[0]
+        return unpack("<Q", self.raw)[0]
     def asStr(self):
         return self.raw.decode('utf-8')
-    def asPtr(self):
+    def asFloat(self):
+        return unpack("<d", self.raw)[0]
+    def asPtr(self): #kinda just for clarity, dont think i really need
         return unpack("<Q", self.raw)[0]
 
 class Pointer:
     def __init__(self, offsets, length, type): # list/tuple in
-        self.offsets = list(offsets)
+
+        self.offsets = [] # converting string hex/int? to int
+        for offset in offsets:
+            self.offsets.append(int(offset, 16)) # using 0 base to invoke guessing base, useful for different types in db?
+
         self.length = length
         self.type = strToType[type]
 
