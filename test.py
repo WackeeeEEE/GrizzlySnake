@@ -56,6 +56,7 @@ import json
 from types import SimpleNamespace
 
 import asyncio
+#import threading
 import time
 
 k32 = windll.kernel32
@@ -136,13 +137,14 @@ class Process:
         data = self.readP(pt+deepPointer[-1], size)
         if datatype != None: # might implement this on the next highest level, not sure yet - ex: data return will be as"Type"()
             if type(datatype) == type(int()):
-                print(f"as type {type(datatype)}: {data.asInt()}")
-                return data.asInt()
+                #print(f"as type {type(datatype)}: {data.asInt()}")
+                if len(data.raw) == 4:
+                    return data.asInt32()
             if type(datatype) == type(str()):
-                print(f"as type {type(datatype)}: {data.asStr()}")
+                #print(f"as type {type(datatype)}: {data.asStr()}")
                 return data.asStr()
             if type(datatype) == type(float()):
-                print(f"as type {type(datatype)}: {data.asFloat()}")
+                #print(f"as type {type(datatype)}: {data.asFloat()}")
                 return data.asFloat()
             # if type(datatype) == type(ptr()): #eeeeeeeh, do i have to?
             #     print("as type {type(datatype)}: {data.asPtr()}")
@@ -176,6 +178,8 @@ class Fragment:
         return "Arbitrarily sized block of process data"
     def asInt(self):
         return unpack("<Q", self.raw)[0]
+    def asInt32(self):
+        return unpack("<i", self.raw)[0]
     def asStr(self):
         return self.raw.decode('utf-8')
     def asFloat(self):
@@ -203,15 +207,46 @@ class PointerShort:
         self.length = pointerObj.length
         self.type = strToType[pointerObj.type]
 
+class Governor:
+    def __init__(self):
+        self.objects = []
+
+    def ready(self, obj):
+        if time.time() >= obj.lastRun+obj.interval:
+            obj.run()
+
+    def addWatcher(self, obj):
+        self.objects.append(obj)
+
+    def listWatchers(self):
+        watcherStr = str('\n'.join([obj.name for obj in self.objects]))
+        print(f"Current Watchers:{watcherStr}")
+
+    def loop(self):
+        while True:
+            #time.sleep(5)
+            for obj in self.objects:
+                self.ready(obj)
+
+
 class Watcher:
-    def __init__(self, proc, pointer):
+    def __init__(self, proc, pointer, name, interval=1):
         self.proc = proc
         self.pointer = pointer
-        
-    async def watch(self):
-        while True:
-            asyncio.sleep(5)
-            print(self.proc.readDeepP(self.pointer.offsets, self.pointer.length, datatype=self.pointer.type))
+
+        self.name = name
+        self.interval = interval
+        self.lastRun = 0
+
+
+
+        # thread = threading.Thread(target=self.run, args=())
+        # #thread.daemon = True
+        # thread.start()
+
+    def run(self):
+        print(self.proc.readDeepP(self.pointer.offsets, self.pointer.length, datatype=self.pointer.type))
+        self.lastRun = time.time()
 
 class Phone:
     def __init__(self, string):
@@ -300,9 +335,13 @@ def start_here():
     return proc
 
     
-a = start_here()
-#a.printLevel()
+MCC = start_here()
+g = Governor()
 level = pointers.halo1.level
-levelWatcher = Watcher(a, PointerShort(level))
-await levelWatcher.watch()
-hi = Phone("Hello there!")
+levelWatcher = Watcher(MCC, PointerShort(level), name="h1-level", interval=5)
+
+tick = pointers.halo1.tick
+tickWatcher = Watcher(MCC, PointerShort(tick), name="tick", interval=.5)
+g.addWatcher(levelWatcher)
+g.addWatcher(tickWatcher)
+g.loop()
